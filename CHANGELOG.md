@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When every main quest of an adventure is closed, the journal now says so under Current Objectives: "<adventure> is complete. Every main quest is closed." (#2127).
 - The Thornwood Watch is fuller and holds together: its creatures have stat blocks, a new ambush on the Bandit Trail and a deeper cave chamber, keys, charms and offerings you can carry, a way to break the Voidstone, a ranger to save at his camp, and an ending in which Commander Elen rides to Harrow's Hollow and does not join the party (#2127).
 - When your character has earned a new level, the DM now brings it into the story on a quiet turn and asks whether you want to advance (at most three times per level), the line you see when a turn cannot settle no longer asks for "one step at a time" unless the trouble was travel or the order of actions, and the review no longer calls a quest the game closed a refused travel update (#2127).
 
